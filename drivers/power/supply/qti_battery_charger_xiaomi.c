@@ -3274,6 +3274,7 @@ static ssize_t batt_sn_show(struct class *c, struct class_attribute *attr,
 }
 static CLASS_ATTR_RO(batt_sn);
 
+#ifdef CONFIG_MI_FG_MAX_LIFE
 static ssize_t max_life_vol_show(struct class *c, struct class_attribute *attr,
 				 char *buf)
 {
@@ -3324,6 +3325,7 @@ static ssize_t over_vol_duration_show(struct class *c,
 			 pst->prop[XM_PROP_GET_OVER_VOL_DURATION]);
 }
 static CLASS_ATTR_RO(over_vol_duration);
+#endif /* CONFIG_MI_FG_MAX_LIFE */
 
 static ssize_t get_learn_time_dev_show(struct class *c,
 					struct class_attribute *attr, char *buf)
@@ -5089,9 +5091,11 @@ static struct attribute *xiaomi_battery_class_attrs[] = {
 	&class_attr_get_learn_power_b.attr,
 	&class_attr_get_learn_power_dev_b.attr,
 	&class_attr_batt_sn.attr,
+#ifdef CONFIG_MI_FG_MAX_LIFE
 	&class_attr_max_life_vol.attr,
 	&class_attr_max_life_temp.attr,
 	&class_attr_over_vol_duration.attr,
+#endif /* CONFIG_MI_FG_MAX_LIFE */
 #if defined(CONFIG_MI_DTPT) && defined(CONFIG_DUAL_FUEL_GAUGE)
 	&class_attr_fg2_over_peak_flag.attr,
 	&class_attr_fg2_current_deviation.attr,

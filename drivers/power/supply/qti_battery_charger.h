@@ -304,9 +304,11 @@ enum xm_property_id {
 	XM_PROP_SET_LEARNING_POWER_B,
 	XM_PROP_GET_LEARNING_POWER_B,
 	XM_PROP_GET_LEARNING_POWER_DEV_B,
+#ifdef CONFIG_MI_FG_MAX_LIFE
 	XM_PROP_GET_MAX_LIFE_VOL,
 	XM_PROP_GET_MAX_LIFE_TEMP,
 	XM_PROP_GET_OVER_VOL_DURATION,
+#endif /* CONFIG_MI_FG_MAX_LIFE */
 	/*********nvt fuelgauge feature*********/
 	/*fuelgauge test node*/
 	XM_PROP_FG1_QMAX,

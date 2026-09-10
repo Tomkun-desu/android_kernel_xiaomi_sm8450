@@ -895,6 +895,18 @@ config MI_CHARGER_M81
 	  Say Y here to enable xiaomi properties similar to
 	  qti_battery_charger_main_m81 module on stock
 
+config MI_FG_MAX_LIFE
+	bool "battery max life statistics properties"
+	help
+	  Say Y here on targets whose charger firmware implements the
+	  max_life_vol, max_life_temp and over_vol_duration properties,
+	  such as marble and zeus.
+
+	  These sit in the middle of enum xm_property_id, whose indices are
+	  the opcodes exchanged with the charger firmware, so enabling them
+	  on a target that lacks them shifts every later property and makes
+	  the fg1_* nodes report the wrong values. If unsure, say N.
+
 config XM_POWER_SUPPLY
 	tristate "Xiaomi power supply config"
 	help
