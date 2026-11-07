@@ -39,10 +39,12 @@ jobs:
 
       - name: Add swap (ThinLTO link needs more than 16 GB)
         run: |
-          sudo fallocate -l 16G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
+          swapon --show
+          sudo rm -f /swapfile-ci
+          sudo fallocate -l 16G /swapfile-ci || sudo dd if=/dev/zero of=/swapfile-ci bs=1M count=16384 status=none
+          sudo chmod 600 /swapfile-ci
+          sudo mkswap /swapfile-ci
+          sudo swapon /swapfile-ci
           swapon --show
           free -h
 
