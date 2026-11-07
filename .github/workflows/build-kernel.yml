@@ -37,6 +37,15 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY/CodeQL"
           df -h /
 
+      - name: Add swap (ThinLTO link needs more than 16 GB)
+        run: |
+          sudo fallocate -l 16G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          swapon --show
+          free -h
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -110,7 +119,8 @@ jobs:
       - name: Build Image
         run: |
           ( while sleep 120; do echo "[build] still compiling $(date -u +%H:%M:%S)"; done ) &
-          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 TARGET_PRODUCT="$DEVICE" -j"$(nproc)" Image
+          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 TARGET_PRODUCT="$DEVICE" \
+            LD="ld.lld --thinlto-jobs=2" -j"$(nproc)" Image
 
       - name: Verify image and config
         run: |
