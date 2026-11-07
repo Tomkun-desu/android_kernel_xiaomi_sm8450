@@ -109,6 +109,7 @@ jobs:
 
       - name: Build Image
         run: |
+          ( while sleep 120; do echo "[build] still compiling $(date -u +%H:%M:%S)"; done ) &
           make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 TARGET_PRODUCT="$DEVICE" -j"$(nproc)" Image
 
       - name: Verify image and config
