@@ -127,11 +127,11 @@ jobs:
       - name: Verify image and config
         run: |
           set -euo pipefail
-          test -s out/arch/arm64/boot/Image
-          test -s out/fs/susfs.o
-          test -s out/drivers/kernelsu/kernelsu.o
-          grep -qx 'CONFIG_KSU=y' out/.config
-          grep -qx 'CONFIG_KSU_SUSFS=y' out/.config
+          [ -s out/arch/arm64/boot/Image ] || { echo "MISSING: out/arch/arm64/boot/Image"; exit 1; }
+          [ -s out/fs/susfs.o ] || { echo "MISSING: out/fs/susfs.o"; exit 1; }
+          [ -s out/drivers/kernelsu/built-in.a ] || { echo "MISSING: out/drivers/kernelsu/built-in.a"; exit 1; }
+          grep -qx 'CONFIG_KSU=y' out/.config || { echo "CONFIG_KSU is not y:"; grep KSU out/.config; exit 1; }
+          grep -qx 'CONFIG_KSU_SUSFS=y' out/.config || { echo "CONFIG_KSU_SUSFS is not y:"; grep SUSFS out/.config; exit 1; }
           echo "kernelrelease: $(cat out/include/config/kernel.release)"
 
       - name: Package flashable zip
