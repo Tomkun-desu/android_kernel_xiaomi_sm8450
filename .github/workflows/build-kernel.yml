@@ -2,6 +2,12 @@ name: Build Kernel (KernelSU-Next + SUSFS)
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Custom build tag (optional) - added to the zip and artifact name"
+        required: false
+        default: ""
+        type: string
   push:
     branches: [lineage-23.2]
 
@@ -25,12 +31,23 @@ jobs:
       KSU_BRANCH: dev-susfs
       SUSFS_REPO: https://gitlab.com/simonpunk/susfs4ksu
       SUSFS_BRANCH: gki-android12-5.10
+      # pershoot-only 5.10 fixes not merged into simonpunk's branch yet
+      SUSFS_EXTRA_REPO: https://gitlab.com/pershoot/susfs4ksu
+      SUSFS_EXTRA_COMMITS: 6387756d64b3ab9ececefc4523627a9ee05a7519 161c058fed5544a6573d87124f346dadd5c4962d
+      BUILD_TAG: ${{ inputs.tag }}
 
     steps:
       - name: Checkout kernel
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      - name: Resolve build tag
+        id: tag
+        run: |
+          TAG="${BUILD_TAG//[^A-Za-z0-9._-]/-}"
+          echo "suffix=${TAG:+-$TAG}" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Free disk space
         run: |
@@ -78,17 +95,30 @@ jobs:
       - name: Add SUSFS
         run: |
           set -euo pipefail
-          git clone -b "$SUSFS_BRANCH" "$SUSFS_REPO" /tmp/susfs4ksu
-          git -C /tmp/susfs4ksu fetch https://gitlab.com/pershoot/susfs4ksu.git \
-            6387756d64b3ab9ececefc4523627a9ee05a7519 \
-            161c058fed5544a6573d87124f346dadd5c4962d
-          git -C /tmp/susfs4ksu -c user.email=ci@localhost -c user.name=ci cherry-pick \
-            6387756d64b3ab9ececefc4523627a9ee05a7519 \
-            161c058fed5544a6573d87124f346dadd5c4962d
-          git -C /tmp/susfs4ksu log -1 --format='SUSFS %h %ad %s' --date=short
-          cp /tmp/susfs4ksu/kernel_patches/fs/susfs.c fs/susfs.c
-          cp /tmp/susfs4ksu/kernel_patches/include/linux/susfs.h \
-             /tmp/susfs4ksu/kernel_patches/include/linux/susfs_def.h include/linux/
+          KSU_ABI=$(sed -n 's/.*SUSFS_VERSION_STR "\(.*\)".*/\1/p' KernelSU-Next/kernel/susfs/susfs_abi.h | head -1)
+          [ -n "$KSU_ABI" ] || { echo "no SUSFS_VERSION_STR in KernelSU-Next"; exit 1; }
+
+          git clone --filter=blob:none -b "$SUSFS_BRANCH" "$SUSFS_REPO" /tmp/susfs4ksu
+          cd /tmp/susfs4ksu
+          version() { sed -n 's/^#define SUSFS_VERSION "\(.*\)"/\1/p' kernel_patches/include/linux/susfs.h; }
+
+          SUSFS_VER=$(version)
+          if [ "$SUSFS_VER" != "$KSU_ABI" ]; then
+            echo "SUSFS head is $SUSFS_VER but KernelSU-Next needs $KSU_ABI, rewinding to the newest matching commit"
+            for c in $(git log --format=%H -- kernel_patches/include/linux/susfs.h); do
+              git checkout -q "$c"
+              if [ "$(version)" = "$KSU_ABI" ]; then SUSFS_VER=$KSU_ABI; break; fi
+            done
+          fi
+          [ "$SUSFS_VER" = "$KSU_ABI" ] || { echo "no SUSFS commit matches KernelSU-Next ABI $KSU_ABI"; exit 1; }
+          echo "SUSFS $SUSFS_VER at $(git rev-parse --short HEAD) $(git log -1 --format='%ad %s' --date=short)"
+
+          git fetch -q "$SUSFS_EXTRA_REPO" $SUSFS_EXTRA_COMMITS
+          git -c user.email=ci@localhost -c user.name=ci cherry-pick $SUSFS_EXTRA_COMMITS
+
+          cp kernel_patches/fs/susfs.c "$GITHUB_WORKSPACE/fs/susfs.c"
+          cp kernel_patches/include/linux/susfs.h kernel_patches/include/linux/susfs_def.h "$GITHUB_WORKSPACE/include/linux/"
+          cd "$GITHUB_WORKSPACE"
           patch -p1 --fuzz=3 --forward < "/tmp/susfs4ksu/kernel_patches/50_add_susfs_in_${SUSFS_BRANCH}.patch"
 
       - name: Verify source pairing
@@ -135,9 +165,12 @@ jobs:
           echo "kernelrelease: $(cat out/include/config/kernel.release)"
 
       - name: Package flashable zip
+        env:
+          TAG_SUFFIX: ${{ steps.tag.outputs.suffix }}
         run: |
           set -euo pipefail
           mkdir -p dist
+          ZIP="SM8450-${DEVICE}-KSU-SUSFS${TAG_SUFFIX}.zip"
           git clone --depth 1 https://github.com/osm0sis/AnyKernel3 /tmp/ak3
           cp out/arch/arm64/boot/Image /tmp/ak3/Image
           sed -i \
@@ -157,14 +190,15 @@ jobs:
             echo "commit=$(git rev-parse --short HEAD)"
             echo "ksu=$(git -C KernelSU-Next rev-parse --short HEAD) ($KSU_BRANCH)"
             echo "susfs=$(git -C /tmp/susfs4ksu rev-parse --short HEAD) ($SUSFS_BRANCH)"
+            echo "tag=${TAG_SUFFIX#-}"
             echo "clang=$CLANG_VER"
           } > /tmp/ak3/BuildInfo
-          (cd /tmp/ak3 && zip -r9 "$GITHUB_WORKSPACE/dist/SM8450-${DEVICE}-KSU-SUSFS.zip" . -x '.git/*')
-          (cd dist && sha256sum "SM8450-${DEVICE}-KSU-SUSFS.zip" > "SM8450-${DEVICE}-KSU-SUSFS.zip.sha256")
+          (cd /tmp/ak3 && zip -r9 "$GITHUB_WORKSPACE/dist/$ZIP" . -x '.git/*')
+          (cd dist && sha256sum "$ZIP" > "$ZIP.sha256")
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SM8450-${{ env.DEVICE }}-KSU-SUSFS
+          name: SM8450-${{ env.DEVICE }}-KSU-SUSFS${{ steps.tag.outputs.suffix }}
           path: dist/*
           if-no-files-found: error
