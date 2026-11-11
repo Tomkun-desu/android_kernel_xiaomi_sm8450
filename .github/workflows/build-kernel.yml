@@ -95,23 +95,9 @@ jobs:
       - name: Add SUSFS
         run: |
           set -euo pipefail
-          KSU_ABI=$(sed -n 's/.*SUSFS_VERSION_STR "\(.*\)".*/\1/p' KernelSU-Next/kernel/susfs/susfs_abi.h | head -1)
-          [ -n "$KSU_ABI" ] || { echo "no SUSFS_VERSION_STR in KernelSU-Next"; exit 1; }
-
           git clone --filter=blob:none -b "$SUSFS_BRANCH" "$SUSFS_REPO" /tmp/susfs4ksu
           cd /tmp/susfs4ksu
-          version() { sed -n 's/^#define SUSFS_VERSION "\(.*\)"/\1/p' kernel_patches/include/linux/susfs.h; }
-
-          SUSFS_VER=$(version)
-          if [ "$SUSFS_VER" != "$KSU_ABI" ]; then
-            echo "SUSFS head is $SUSFS_VER but KernelSU-Next needs $KSU_ABI, rewinding to the newest matching commit"
-            for c in $(git log --format=%H -- kernel_patches/include/linux/susfs.h); do
-              git checkout -q "$c"
-              if [ "$(version)" = "$KSU_ABI" ]; then SUSFS_VER=$KSU_ABI; break; fi
-            done
-          fi
-          [ "$SUSFS_VER" = "$KSU_ABI" ] || { echo "no SUSFS commit matches KernelSU-Next ABI $KSU_ABI"; exit 1; }
-          echo "SUSFS $SUSFS_VER at $(git rev-parse --short HEAD) $(git log -1 --format='%ad %s' --date=short)"
+          echo "SUSFS $(sed -n 's/^#define SUSFS_VERSION "\(.*\)"/\1/p' kernel_patches/include/linux/susfs.h) at $(git rev-parse --short HEAD) $(git log -1 --format='%ad %s' --date=short)"
 
           git fetch -q "$SUSFS_EXTRA_REPO" $SUSFS_EXTRA_COMMITS
           git -c user.email=ci@localhost -c user.name=ci cherry-pick $SUSFS_EXTRA_COMMITS
@@ -127,7 +113,13 @@ jobs:
           SUSFS_VER=$(sed -n 's/^#define SUSFS_VERSION "\(.*\)"/\1/p' include/linux/susfs.h)
           KSU_ABI_VER=$(sed -n 's/.*SUSFS_VERSION_STR "\(.*\)".*/\1/p' KernelSU-Next/kernel/susfs/susfs_abi.h | head -1)
           echo "kernel SUSFS: $SUSFS_VER / KSU ABI: $KSU_ABI_VER"
-          [ -n "$SUSFS_VER" ] && [ "$SUSFS_VER" = "$KSU_ABI_VER" ]
+          [ -n "$SUSFS_VER" ] && [ -n "$KSU_ABI_VER" ]
+          if [ "$SUSFS_VER" != "$KSU_ABI_VER" ]; then
+            newest=$(printf '%s\n%s\n' "${SUSFS_VER#v}" "${KSU_ABI_VER#v}" | sort -V | tail -1)
+            [ "$newest" = "${SUSFS_VER#v}" ] ||
+              { echo "kernel SUSFS $SUSFS_VER is older than KernelSU-Next ABI $KSU_ABI_VER"; exit 1; }
+            echo "::warning::kernel SUSFS $SUSFS_VER, KernelSU-Next ABI $KSU_ABI_VER; building latest of both"
+          fi
           test -f fs/susfs.c
           grep -q 'susfs.o' fs/Makefile
 
